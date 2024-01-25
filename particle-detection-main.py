@@ -15,12 +15,13 @@ from tkinter import filedialog
 global image_path # Path to the image
 global image_name # Reference to the file name of the selected video file
 global image # Reference to the opened image file
+global image_roi # Reference to the user-defined ROI for contour selection
 
 # Open a video file from a path and store the instance
 def open_image_file():
     global image_path, image_name, image
     # Open a file dialog to select the video file
-    image_file = filedialog.askopenfilename(title="Select an image", filetypes=[("PNG files", "*.png"), ("JPEG files", "*.jpg")])
+    image_file = filedialog.askopenfilename(title="Select an image", filetypes=[("JPEG files", "*.jpg"),("PNG files", "*.png")])
 
     if not image_file:
         return  # No file selected
@@ -72,10 +73,19 @@ def select_point(event,x,y,flags,param):
         cv2.imshow("image", image)
 
 def preprocess_image():
-    global image
+    global image, image_roi
+    
+    # Allow the user to define a Region of Interest (ROI)
+    roi = cv2.selectROI("Select ROI", image)
+    cv2.destroyWindow("Select ROI")
+
+    # Crop the image based on the ROI
+    x, y, w, h = map(int, roi)
+    image_roi = image[y:y+h, x:x+w]
+
     # Convert the image to HSV color space
-    result = image.copy()
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    result = image_roi.copy()
+    hsv = cv2.cvtColor(image_roi, cv2.COLOR_BGR2HSV)
     
     # Threshold for red color
     lower = np.array([155,25,0])
@@ -95,13 +105,14 @@ def preprocess_image():
     return closing
 
 def count_and_measure_area(binary_image, calibration_factor):
+    global image_roi
     # Find contours in the binary image
     contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     # Draw contours on the original image
-    original_image_with_contours = image.copy()
-    cv2.drawContours(original_image_with_contours, contours, -1, (0, 255, 0), 2)  # -1 means draw all contours
-    cv2.imshow("contours", original_image_with_contours)
+    contour_overlay = image_roi.copy()
+    cv2.drawContours(contour_overlay, contours, -1, (0, 255, 0), 2)  # -1 means draw all contours
+    cv2.imshow("contours", contour_overlay)
     # Initialize variables to count particles and total area
     particle_count = 0
     areas = []
@@ -161,17 +172,19 @@ def main():
     print(f"Total Area of Red Particles: {areas} {Actual_unit}")
 
     bin_size= float(input("Enter histogram bin size: "))
-    unit = input("Enter your unit(mm, inch): ")
+    unit = input("Enter your  unit(mm, inch): ")
     if Actual_unit != unit:
         if Actual_unit == 'mm':
             areas = [float(area)/25.4 for area in areas]
         else:
             areas = [float(area)*25.4 for area in areas]
+            filtered_contours = [float(area) for area in areas if float(area) <= 5]
+            create_histogram(filtered_contours, .5, unit)
     else:
         areas = [float(area) for area in areas]
             
     create_histogram(areas, bin_size, unit)
-
+    
     # De-allocate any associated memory usage   
     if cv2.waitKey(0) & 0xff == 27:  
         cv2.destroyAllWindows()  
