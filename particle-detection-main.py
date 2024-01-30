@@ -6,10 +6,13 @@ Created on Mon Jan 22 12:58:03 2024
 """
 
 import cv2
+from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import seaborn as sns
 from scipy.spatial.distance import euclidean
+from scipy.stats import norm
 from tkinter import filedialog
 
 global image_path # Path to the image
@@ -122,23 +125,93 @@ def count_and_measure_area(binary_image, calibration_factor):
         # Calculate the area of the contour
         area = cv2.contourArea(contour)
         
-        # Ignore small contours (noise)
         area = area*calibration_factor
         if area > 0:
             particle_count += 1
             areas.append('%.3f'%(area))
                 
-    return particle_count, areas
+    return particle_count, areas, contour_overlay
 
-def create_histogram(data, bin_size, units):
-    global image_name
-    bins = np.arange(0, max(data) + bin_size, bin_size)
-    plt.hist(data, bins=bins, edgecolor='black')
+def process_data(Actual_unit, unit, areas):
+    if Actual_unit != unit:
+        if Actual_unit == 'mm': # Need to convert to inch
+            areas = [float(area)/(25.4**2) for area in areas]
+        else: # Need to convert to mm
+            areas = [float(area)*(25.4**2) for area in areas]
+    else:
+        areas = [float(area) for area in areas]
+    return areas
+        
+def create_histogram(data, x_scale, bin_size, units, file):
+    bins = np.arange(0, x_scale + bin_size, bin_size)
+    plt.hist(data, bins=bins, edgecolor='black') # Plot the histogram
     plt.xlabel(f'Area ({units}\u00b2)')
     plt.ylabel('Frequency')
-    plt.title(f'Coating Particulate Count\n{image_name}')
+    plt.title('Coating Particulate: {:.2f} to {:.2f}'.format(0, x_scale))
     plt.grid(True)
+    plt.savefig(file) # Save the histogram
+    plt.show() # Display the plot
+
+def create_graphic(areas, x_scale, unit, file):
+    mu, std = norm.fit(areas)
+    fig, ax = plt.subplots()
+    sns.histplot(data=areas, binwidth=x_scale/10, ax=ax, kde=True)
+    ax.set_xlim(0, x_scale)
+    plt.xlabel(f'Area ({unit}\u00b2)')
+    plt.title('Coating Particulate: {:.2f} and {:.2f}'.format(mu, std))
+    plt.savefig(file) # Save the graphic
     plt.show()
+    
+def output(particle_count, areas, contour_overlay, unit): 
+    # Print the total area and max area
+    total_area = sum(areas)
+    max_area = max(areas)
+    
+    # Print the results
+    print(f"Number of Red Particles: {particle_count}")
+    print(f"Total Area: {total_area:.3f}")
+    print(f"Max Area: {max_area:.3f}")
+    
+    foldername = image_name.split('.')[0] 
+    filepath = os.path.join(image_path, foldername)
+    
+    # Create the file path if one does not exist already
+    if not os.path.exists(filepath):
+        os.makedirs(filepath)
+
+    # Get the current date and time
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
+        
+    # Create filenames stamped with the current time and date
+    filename = os.path.splitext(image_name)[0] # Get the file name without an extension
+    filename = filename + "_" + formatted_datetime
+    
+    # Save the raw data to a file in the output folder path
+    file_extension = filename + '.csv'
+    path = os.path.join(filepath, file_extension)
+    with open(path, 'w', newline='') as file:
+        file.write('Areas Given In ' + unit.upper() + '\n') # Write the header
+        for area in areas:
+            file.write(str(area) + '\n')
+    
+    # Save distribution graphics for specific size bins
+    file_extension = filename + '_0_to_50' + unit + '.png'
+    path = os.path.join(filepath, file_extension)
+    create_graphic(areas, 50, unit, path)
+    
+    file_extension = filename + '_0_to_5' + unit + '.png'
+    path = os.path.join(filepath, file_extension)
+    create_graphic(areas, 5, unit, path)
+    
+    file_extension = filename + '_0_to_1' + unit + '.png'
+    path = os.path.join(filepath, file_extension)
+    create_graphic(areas, 1, unit, path)
+    
+    # Save the image with the contours drawn 
+    file_extension = filename + '_contours.png'
+    
+    return
     
 def main(): 
     open_image_file() # Open the image file
@@ -152,12 +225,12 @@ def main():
     cv2.imshow('image',image)
     cv2.waitKey(0)
     
-    px= int(euclidean(points[0], points[1]))
+    px= euclidean(points[0], points[1])
     Actual_dimensions= float(input("Enter dimensions: "))
     Actual_unit = input("Enter your unit(mm, inch): ")
     
-    detected_px_len= int(Actual_dimensions)/px
-    calibration_factor = round(detected_px_len, 2)
+    calibration_factor= Actual_dimensions/px
+    calibration_factor= calibration_factor**2
     
     cv2.destroyAllWindows()
     
@@ -165,26 +238,13 @@ def main():
     binary_image = preprocess_image()
     
     # Count and measure the area of red particles
-    particle_count, areas = count_and_measure_area(binary_image, calibration_factor)
-
-    # Print the results
-    print(f"Number of Red Particles: {particle_count}")
-    print(f"Total Area of Red Particles: {areas} {Actual_unit}")
-
-    bin_size= float(input("Enter histogram bin size: "))
-    unit = input("Enter your  unit(mm, inch): ")
-    if Actual_unit != unit:
-        if Actual_unit == 'mm':
-            areas = [float(area)/25.4 for area in areas]
-        else:
-            areas = [float(area)*25.4 for area in areas]
-            filtered_contours = [float(area) for area in areas if float(area) <= 5]
-            create_histogram(filtered_contours, .5, unit)
-    else:
-        areas = [float(area) for area in areas]
-            
-    create_histogram(areas, bin_size, unit)
+    particle_count, areas, contour_overlay = count_and_measure_area(binary_image, calibration_factor)
     
+    unit = input("Enter your output unit(mm, inch): ")
+    
+    areas = process_data(Actual_unit, unit, areas) # Process the data for applicable units
+    output(particle_count, areas, contour_overlay, unit) # Output max area, total area, particle count. Save to file.     
+        
     # De-allocate any associated memory usage   
     if cv2.waitKey(0) & 0xff == 27:  
         cv2.destroyAllWindows()  
