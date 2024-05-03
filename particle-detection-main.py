@@ -4,6 +4,7 @@ Created on Mon Jan 22 12:58:03 2024
 
 @author: jeizadi
 """
+import math
 
 import cv2
 from datetime import datetime
@@ -17,12 +18,13 @@ from tkinter import filedialog
 
 global image_path # Path to the image
 global image_name # Reference to the file name of the selected video file
+global original_image # Reference to the OG image file
 global image # Reference to the opened image file
 global image_roi # Reference to the user-defined ROI for contour selection
 
 # Open a video file from a path and store the instance
 def open_image_file():
-    global image_path, image_name, image
+    global image_path, image_name, image, original_image
     # Open a file dialog to select the video file
     image_file = filedialog.askopenfilename(title="Select an image", filetypes=[("JPEG files", "*.jpg"),("PNG files", "*.png")])
 
@@ -33,6 +35,7 @@ def open_image_file():
     
     # Load the image
     image = cv2.imread(image_file)
+    original_image = cv2.imread(image_file)
     
     # Get the original image dimensions
     original_height, original_width = image.shape[:2]
@@ -68,7 +71,7 @@ def select_point(event,x,y,flags,param):
         ix,iy = x,y
         points.append([ix, iy])
             
-    # Record ending (x,y) coordintes on left mouse bottom release
+    # Record ending (x,y) coordinates on left mouse bottom release
     elif event == cv2.EVENT_LBUTTONUP:
         points.append((x,y))
         
@@ -104,7 +107,7 @@ def preprocess_image():
     # Remove noise using morphological operations
     kernel = np.ones((1, 1), np.uint8)
     closing = cv2.morphologyEx(binary_result, cv2.MORPH_CLOSE, kernel, iterations=2)
-
+    
     return closing
 
 def count_and_measure_area(binary_image, calibration_factor):
@@ -191,9 +194,10 @@ def output(particle_count, areas, contour_overlay, unit):
     file_extension = filename + '.csv'
     path = os.path.join(filepath, file_extension)
     with open(path, 'w', newline='') as file:
-        file.write('Areas Given In ' + unit.upper() + '\n') # Write the header
+        file.write('Areas Given In ' + unit.upper() + ',Area-Derived Diameter\n')  # Write the header
         for area in areas:
-            file.write(str(area) + '\n')
+            diameter = 2 * math.sqrt(area / math.pi)
+            file.write(str(area) + ',' + str(diameter) + '\n')  # Write data for both columns
     
     # Save distribution graphics for specific size bins
     file_extension = filename + '_0_to_50' + unit + '.png'
