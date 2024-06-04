@@ -4,7 +4,6 @@ Created on Mon Jan 22 12:58:03 2024
 
 @author: jeizadi
 """
-import math
 
 import cv2
 from datetime import datetime
@@ -12,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-import pandas as pd
 import seaborn as sns
 from scipy.spatial.distance import euclidean
 from scipy.stats import norm
@@ -71,6 +69,7 @@ def resize_image(max_width, max_height):
     image = cv2.resize(image, (new_width, new_height))
 
 
+# Click and drag to select the scale for the measurement
 def select_point(event, x, y, flags, param):
     global image, points
     
@@ -87,6 +86,7 @@ def select_point(event, x, y, flags, param):
         cv2.imshow("image", image)
 
 
+# Color-threshold the image to isolate the red particulate in a binary
 def preprocess_image():
     global image, image_roi
     
@@ -120,6 +120,8 @@ def preprocess_image():
     return closing
 
 
+# Fit contours to the binary using Contour Features in OpenCV and apply algorithms to fit shapes to each contour
+# to determine enclosed area, perimeter, diameter, width, height, etc.
 def count_and_measure_area(binary_image, calibration_factor):
     global image_roi
     # Find contours in the binary image
@@ -176,6 +178,7 @@ def count_and_measure_area(binary_image, calibration_factor):
 
 
 '''
+# Meant to enable the user to switch output units from in to mm to cm,etc. Disabled for this iteration of program
 def process_data(Actual_unit, unit, areas):
     if Actual_unit != unit:
         if Actual_unit == 'mm': # Need to convert to inch
@@ -188,28 +191,32 @@ def process_data(Actual_unit, unit, areas):
 '''
 
 
+# Can enable histogram creation with various bin sizes as a graphical output for the software
 def create_histogram(data, x_scale, bin_size, file):
     bins = np.arange(0, x_scale + bin_size, bin_size)
     plt.hist(data, bins=bins, edgecolor='black')  # Plot the histogram
     plt.xlabel(f'Area (mm)')
     plt.ylabel('Frequency')
-    plt.title('Coating Particulate: {:.2f} to {:.2f}'.format(0, x_scale))
+    plt.title('Red Particulate: {:.2f} to {:.2f}'.format(0, x_scale))
     plt.grid(True)
     plt.savefig(file)
     plt.show()
 
 
+# Can enable create graphic to plot graphical summary and output this for the user
 def create_graphic(areas, x_scale, file):
     mu, std = norm.fit(areas)
     fig, ax = plt.subplots()
     sns.histplot(data=areas, binwidth=x_scale/10, ax=ax, kde=True)
     ax.set_xlim(0, x_scale)
     plt.xlabel(f'Area (mm)')
-    plt.title('Coating Particulate: {:.2f} and {:.2f}'.format(mu, std))
+    plt.title('Red Particulate: {:.2f} and {:.2f}'.format(mu, std))
     plt.savefig(file)  # Save the graphic
     plt.show()
 
 
+# Creates a output .csv excel readable file with the various parameter outputted for each contour identified
+# along with images of contours and various algorithms identification tracked
 def output(particle_count, areas, perimeters, diameters, widths, heights, contour_overlay, circle_overlay,
            rectangle_overlay):
     folder_name = image_name.split('.')[0]
@@ -264,6 +271,9 @@ def output(particle_count, areas, perimeters, diameters, widths, heights, contou
     return
 
 
+# Open an image file and set the scale by clicking and dragging a known distance. Select the region of interest. Will
+# auto-threshold to identify contours and run min circle-fit and rotated rectangle-fit routines on binary image. Outputs
+# include contour image, circles image, rectangles image and .csv file with area, perimeter, width, height, and diameter
 def main(): 
     open_image_file()  # Open the image file
  
@@ -273,12 +283,12 @@ def main():
     # bind select_point function to a window that will capture the mouse click
     cv2.namedWindow('image')
     cv2.setMouseCallback('image', select_point)
-    cv2.imshow('image',image)
+    cv2.imshow('image', image)
     cv2.waitKey(0)
     
     px = euclidean(points[0], points[1])
     cal_dim = float(input("Enter dimensions: "))
-    #Actual_unit = input("Enter your unit(mm, inch): ")
+    # Actual_unit = input("Enter your unit(mm, inch): ")
     calibration_factor = cal_dim / px
 
     cv2.destroyAllWindows()
@@ -303,5 +313,7 @@ def main():
     if cv2.waitKey(0) & 0xff == 27:  
         cv2.destroyAllWindows()  
 
+
 if __name__ == "__main__":
     main()
+    
